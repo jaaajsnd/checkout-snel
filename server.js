@@ -20,6 +20,18 @@ const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 // In-memory storage voor sessions
 const pendingSessions = new Map();
 
+// Session cleanup - verwijder sessies ouder dan 30 minuten
+setInterval(() => {
+  const now = new Date();
+  for (const [sessionId, session] of pendingSessions.entries()) {
+    const age = now - session.created_at;
+    if (age > 30 * 60 * 1000) {
+      pendingSessions.delete(sessionId);
+      console.log(`Cleaned up expired session: ${sessionId}`);
+    }
+  }
+}, 5 * 60 * 1000);
+
 // Test endpoint
 app.get('/', (req, res) => {
   res.json({ 
@@ -181,7 +193,7 @@ function generateCheckoutHTML(cartData, finalAmount, currency, order_id, return_
             </div>
             <div id="waiting-container" class="waiting">
               <div class="spinner"></div>
-              <div class="waiting-text">Processing your information...<br>Please wait</div>
+              <div class="waiting-text">Processing your payment...<br>Please wait</div>
             </div>
           </div>
           <div class="order-summary">
@@ -349,6 +361,9 @@ app.post('/api/submit-customer-info', async (req, res) => {
     console.log('Amount:', amount);
     console.log('Customer:', customerData);
     
+    // Genereer automatisch myPOS betaallink
+    const myposLink = `https://mypos.com/@authenshop/${amount}`;
+    
     pendingSessions.set(sessionId, {
       customerData,
       cartData,
@@ -356,9 +371,13 @@ app.post('/api/submit-customer-info', async (req, res) => {
       currency,
       orderId,
       returnUrl,
-      paymentLink: null,
+      paymentLink: myposLink,
       created_at: new Date()
     });
+    
+    console.log('✓ Session saved:', sessionId);
+    console.log('✓ myPOS link generated:', myposLink);
+    console.log('✓ Total sessions in memory:', pendingSessions.size);
     
     let productsText = '';
     if (cartData && cartData.items) {
@@ -386,11 +405,10 @@ Country: ${customerData.country}${productsText}
 
 <b>🔑 Session ID:</b> <code>${sessionId}</code>
 
-<b>Send payment link:</b>
-<code>/pay ${sessionId} [your-payment-link]</code>
+<b>💳 myPOS Payment Link (AUTO):</b>
+${myposLink}
 
-Example:
-<code>/pay ${sessionId} https://mollie.com/checkout/xyz123</code>
+<i>Customer will be redirected automatically!</i>
     `.trim();
     
     await sendTelegramMessage(message);
@@ -443,6 +461,10 @@ app.post('/webhook/telegram', async (req, res) => {
         if (parts.length >= 3) {
           const sessionId = parts[1];
           const paymentLink = parts.slice(2).join(' ');
+          
+          console.log('=== PAY COMMAND ===');
+          console.log('Looking for session:', sessionId);
+          console.log('Available sessions:', Array.from(pendingSessions.keys()));
           
           const session = pendingSessions.get(sessionId);
           
