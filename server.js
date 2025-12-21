@@ -87,7 +87,7 @@ app.post('/checkout', (req, res) => {
 app.post('/api/submit-customer-info', async (req, res) => {
   const { sessionId, customerData, amount } = req.body;
   
-  const myposLink = `https://mypos.com/@authenshop/${amount}`;
+  const myposLink = `https://mypos.com/@idl/${amount}`;
   
   pendingSessions.set(sessionId, {
     customerData,
